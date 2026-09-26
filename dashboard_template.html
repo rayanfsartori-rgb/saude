@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RFS — Dashboard de Saúde</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    body { background:#0f172a; color:#e2e8f0; font-family:system-ui,sans-serif; }
+    .card { background:#1e293b; border:1px solid #334155; border-radius:12px; }
+    .tab-active { border-bottom:2px solid #6366f1; color:#a5b4fc; }
+    .tab-inactive { color:#64748b; }
+    .tab-inactive:hover { color:#94a3b8; }
+    canvas { max-height:240px; }
+    .pbtn { padding:3px 11px; border-radius:8px; font-size:11px; cursor:pointer; transition:.15s; }
+    .pbtn-on  { background:#6366f1; color:#fff; }
+    .pbtn-off { background:#1e293b; color:#64748b; border:1px solid #334155; }
+    .pbtn-off:hover { border-color:#6366f1; color:#a5b4fc; }
+    table th { font-weight:500; }
+    tr:last-child td { border-bottom:none; }
+    .badge { display:inline-block; padding:2px 8px; border-radius:99px; font-size:11px; }
+    .ok   { color:#4ade80; }
+    .bad  { color:#f87171; }
+    .muted{ color:#94a3b8; }
+  </style>
+</head>
+<body class="min-h-screen">
+
+<script>window.__RFS__ = __DADOS_RFS__;</script>
+
+<!-- ── Header ─────────────────────────────────────────────────────────────── -->
+<div class="border-b border-slate-700 px-6 py-3 sticky top-0 z-10" style="background:#0f172a">
+  <div class="max-w-5xl mx-auto flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <span class="text-lg font-bold text-white">RFS</span>
+      <span class="text-xs text-slate-500" id="gerado-em"></span>
+    </div>
+    <div class="flex gap-1 items-center">
+      <span class="text-xs text-slate-600 mr-1">Período</span>
+      <button class="pbtn pbtn-on"  data-d="7">7d</button>
+      <button class="pbtn pbtn-off" data-d="14">14d</button>
+      <button class="pbtn pbtn-off" data-d="30">30d</button>
+      <button class="pbtn pbtn-off" data-d="90">90d</button>
+      <button class="pbtn pbtn-off" data-d="0">Tudo</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Tabs ───────────────────────────────────────────────────────────────── -->
+<div class="border-b border-slate-700 px-6">
+  <div class="max-w-5xl mx-auto flex gap-6 overflow-x-auto">
+    <button class="tab tab-active py-3 text-sm whitespace-nowrap" data-tab="inicio">Início</button>
+    <button class="tab tab-inactive py-3 text-sm whitespace-nowrap" data-tab="nutricao">Nutrição</button>
+    <button class="tab tab-inactive py-3 text-sm whitespace-nowrap" data-tab="esportes">Esportes</button>
+    <button class="tab tab-inactive py-3 text-sm whitespace-nowrap" data-tab="composicao">Composição</button>
+    <button class="tab tab-inactive py-3 text-sm whitespace-nowrap" data-tab="exames">Exames</button>
+    <button class="tab tab-inactive py-3 text-sm whitespace-nowrap" data-tab="notas">Notas</button>
+  </div>
+</div>
+
+<!-- ── Content ────────────────────────────────────────────────────────────── -->
+<div class="max-w-5xl mx-auto px-6 py-6 space-y-4">
+
+  <!-- ════════════ INÍCIO ════════════ -->
+  <div id="tab-inicio" class="tab-content space-y-4">
+
+    <!-- Stat cards -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div class="card p-4">
+        <div class="text-xs text-slate-400 mb-1">Peso Atual</div>
+        <div class="text-2xl font-bold text-white" id="i-peso">—</div>
+        <div class="text-xs text-slate-500" id="i-peso-data">—</div>
+      </div>
+      <div class="card p-4">
+        <div class="text-xs text-slate-400 mb-1">Perda Acumulada</div>
+        <div class="text-2xl font-bold ok" id="i-perda">—</div>
+        <div class="text-xs text-slate-500">desde o início</div>
+      </div>
+      <div class="card p-4">
+        <div class="text-xs text-slate-400 mb-1">Média 4 Semanas</div>
+        <div class="text-2xl font-bold text-white" id="i-media4">—</div>
+        <div class="text-xs text-slate-500">kg</div>
+      </div>
+      <div class="card p-4">
+        <div class="text-xs text-slate-400 mb-1">Falta para Meta</div>
+        <div class="text-2xl font-bold" style="color:#818cf8" id="i-falta">—</div>
+        <div class="text-xs text-slate-500">meta: <span id="i-meta-val">—</span> kg</div>
+      </div>
+    </div>
+
+    <!-- Último registro -->
+    <div class="card p-5">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-sm font-semibold text-slate-200">Último Registro</h2>
+        <span class="text-xs text-slate-500" id="i-ult-data">—</span>
+      </div>
+      <div class="grid grid-cols-3 md:grid-cols-6 gap-4 mb-4">
+        <div><div class="text-xs text-slate-500">Proteína</div><div class="text-lg font-bold" id="i-ult-prot">—</div><div class="text-xs text-slate-600">≥160g</div></div>
+        <div><div class="text-xs text-slate-500">Carboidrato</div><div class="text-lg font-bold" id="i-ult-carbo">—</div><div class="text-xs text-slate-600">150–250g</div></div>
+        <div><div class="text-xs text-slate-500">Gordura</div><div class="text-lg font-bold" id="i-ult-gord">—</div><div class="text-xs text-slate-600">60–75g</div></div>
+        <div><div class="text-xs text-slate-500">Kcal Ingeridas</div><div class="text-lg font-bold" id="i-ult-kcal">—</div><div class="text-xs text-slate-600">1850–1950</div></div>
+        <div><div class="text-xs text-slate-500">Gasto Garmin</div><div class="text-lg font-bold muted" id="i-ult-gasto">—</div><div class="text-xs text-slate-600">saldo: <span id="i-ult-saldo">—</span></div></div>
+        <div><div class="text-xs text-slate-500">Sono</div><div class="text-lg font-bold" id="i-ult-sono">—</div><div class="text-xs text-slate-600">7–8,5h</div></div>
+      </div>
+      <div class="pt-3 border-t border-slate-700 flex gap-4 flex-wrap">
+        <div><span class="text-xs text-slate-500">Atividade: </span><span class="text-sm text-slate-300" id="i-ult-ativ">—</span></div>
+        <div><span class="text-xs text-slate-500">Obs: </span><span class="text-sm text-slate-400" id="i-ult-obs">—</span></div>
+      </div>
+    </div>
+
+    <!-- Mini gráfico peso -->
+    <div class="card p-5">
+      <h2 class="text-sm font-semibold text-slate-200 mb-4">Evolução do Peso</h2>
+      <canvas id="c-peso-mini"></canvas>
+    </div>
+  </div>
+
+  <!-- ════════════ NUTRIÇÃO ════════════ -->
+  <div id="tab-nutricao" class="tab-content hidden space-y-4">
+
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div class="card p-4"><div class="text-xs text-slate-400">Média Proteína</div><div class="text-xl font-bold" id="n-mp">—</div><div class="text-xs text-slate-600">meta ≥160g</div></div>
+      <div class="card p-4"><div class="text-xs text-slate-400">Média Carbo</div><div class="text-xl font-bold" id="n-mc">—</div><div class="text-xs text-slate-600">meta 150–250g</div></div>
+      <div class="card p-4"><div class="text-xs text-slate-400">Média Gordura</div><div class="text-xl font-bold" id="n-mg">—</div><div class="text-xs text-slate-600">meta 60–75g</div></div>
+      <div class="card p-4"><div class="text-xs text-slate-400">Média Kcal</div><div class="text-xl font-bold" id="n-mk">—</div><div class="text-xs text-slate-600">meta 1850–1950</div></div>
+    </div>
+
+    <div class="card p-5">
+      <h2 class="text-sm font-semibold text-slate-200 mb-4">Calorias Ingeridas vs Meta</h2>
+      <canvas id="c-kcal"></canvas>
+    </div>
+
+    <div class="card p-5">
+      <h2 class="text-sm font-semibold text-slate-200 mb-4">Macros por Dia (g)</h2>
+      <canvas id="c-macros"></canvas>
+    </div>
+
+    <div class="card p-5">
+      <h2 class="text-sm font-semibold text-slate-200 mb-3">Registros Recentes</h2>
+      <div class="overflow-x-auto">
+        <table class="w-full text-xs">
+          <thead><tr class="text-slate-500 border-b border-slate-700">
+            <th class="text-left py-2">Data</th>
+            <th class="text-right py-2">Prot</th>
+            <th class="text-right py-2">Carbo</th>
+            <th class="text-right py-2">Gord</th>
+            <th class="text-right py-2">Kcal</th>
+            <th class="text-right py-2">Gasto</th>
+            <th class="text-right py-2">Saldo</th>
+            <th class="text-right py-2">Sono</th>
+          </tr></thead>
+          <tbody id="n-tabela"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════ ESPORTES ════════════ -->
+  <div id="tab-esportes" class="tab-content hidden space-y-4">
+
+    <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+      <div class="card p-4"><div class="text-xs text-slate-400">Média Gasto/dia</div><div class="text-xl font-bold" id="e-gasto">—</div><div class="text-xs text-slate-600">kcal (Garmin)</div></div>
+      <div class="card p-4"><div class="text-xs text-slate-400">Média Sono</div><div class="text-xl font-bold" id="e-sono">—</div><div class="text-xs text-slate-600">horas/noite</div></div>
+      <div class="card p-4"><div class="text-xs text-slate-400">Dias com Atividade</div><div class="text-xl font-bold" id="e-dias">—</div><div class="text-xs text-slate-600" id="e-dias-pct">—</div></div>
+    </div>
+
+    <div class="card p-5">
+      <h2 class="text-sm font-semibold text-slate-200 mb-4">Gasto Calórico Total (Garmin)</h2>
+      <canvas id="c-gasto"></canvas>
+    </div>
+
+    <div class="card p-5">
+      <h2 class="text-sm font-semibold text-slate-200 mb-4">Sono por Noite (h)</h2>
+      <canvas id="c-sono"></canvas>
+    </div>
+
+    <div class="card p-5">
+      <h2 class="text-sm font-semibold text-slate-200 mb-4">Frequência por Atividade</h2>
+      <div id="e-freq" class="space-y-3"></div>
+    </div>
+  </div>
+
+  <!-- ════════════ COMPOSIÇÃO ════════════ -->
+  <div id="tab-composicao" class="tab-content hidden space-y-4">
+    <div class="card p-5">
+      <h2 class="text-sm font-semibold text-slate-200 mb-4">Evolução do Peso</h2>
+      <canvas id="c-peso-full"></canvas>
+    </div>
+    <div class="card p-5">
+      <h2 class="text-sm font-semibold text-slate-200 mb-3">Histórico de Pesagens</h2>
+      <div class="overflow-x-auto">
+        <table class="w-full text-xs">
+          <thead><tr class="text-slate-500 border-b border-slate-700">
+            <th class="text-left py-2">#</th>
+            <th class="text-left py-2">Data</th>
+            <th class="text-right py-2">Peso</th>
+            <th class="text-right py-2">Variação</th>
+            <th class="text-left py-2 pl-4">Obs</th>
+          </tr></thead>
+          <tbody id="comp-tabela"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════ EXAMES ════════════ -->
+  <div id="tab-exames" class="tab-content hidden">
+    <div class="card p-5">
+      <h2 class="text-sm font-semibold text-slate-200 mb-4">Resultados de Exames</h2>
+      <div id="exames-content"></div>
+    </div>
+  </div>
+
+  <!-- ════════════ NOTAS ════════════ -->
+  <div id="tab-notas" class="tab-content hidden">
+    <div class="card p-5">
+      <h2 class="text-sm font-semibold text-slate-200 mb-4">Observações Recentes</h2>
+      <div id="notas-content" class="space-y-3"></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ════════════ JAVASCRIPT ════════════ -->
+<script>
+const D = window.__RFS__;
+let periodo = 7;
+let C = {};           // charts ativos
+let tabAtiva = 'inicio';
+
+// ── Helpers ────────────────────────────────────────────────────────────────────
+
+function parseDt(s) {
+  if (!s) return null;
+  const [d,m,y] = s.split('/');
+  return new Date(+y, +m-1, +d);
+}
+
+function filtrar(lista, campo='data') {
+  if (periodo === 0) return lista;
+  const corte = new Date(); corte.setDate(corte.getDate() - periodo);
+  return lista.filter(r => { const dt = parseDt(r[campo]); return dt && dt >= corte; });
+}
+
+function cor(v, min, max) {
+  if (!v) return '#94a3b8';
+  return (v >= min && v <= max) ? '#4ade80' : '#f87171';
+}
+
+function fmt(v, dec=0, suf='') {
+  if (v === null || v === undefined || v === 0) return '—';
+  const s = typeof v === 'number' ? v.toFixed(dec) : v;
+  return s + (suf && v ? suf : '');
+}
+
+function media(lista, campo) {
+  const vals = lista.map(r => r[campo]).filter(v => v > 0);
+  return vals.length ? vals.reduce((a,b) => a+b, 0) / vals.length : 0;
+}
+
+function destroyC(id) { if (C[id]) { C[id].destroy(); delete C[id]; } }
+
+const CX = {
+  plugins: { legend: { labels: { color:'#94a3b8', font:{size:11} } } },
+  scales: {
+    x: { ticks:{color:'#64748b',font:{size:10},maxRotation:45}, grid:{color:'#1e293b'} },
+    y: { ticks:{color:'#64748b',font:{size:10}}, grid:{color:'#334155'} }
+  }
+};
+
+// ── INÍCIO ─────────────────────────────────────────────────────────────────────
+
+function renderInicio() {
+  document.getElementById('gerado-em').textContent = 'Gerado em ' + D.gerado_em;
+
+  const up = D.ultima_pesagem;
+  document.getElementById('i-peso').textContent      = up ? up.peso + ' kg' : '—';
+  document.getElementById('i-peso-data').textContent = up ? up.data : '—';
+  document.getElementById('i-perda').textContent     = D.perda_total ? '−' + D.perda_total + ' kg' : '—';
+  document.getElementById('i-media4').textContent    = D.media_4sem  ? D.media_4sem + ' kg' : '—';
+  document.getElementById('i-meta-val').textContent  = D.metas.peso_meta;
+
+  const falta = (up && D.metas.peso_meta) ? Math.max(0, up.peso - D.metas.peso_meta).toFixed(1) : null;
+  document.getElementById('i-falta').textContent = falta !== null ? falta + ' kg' : '—';
+
+  // Último registro
+  const reg = D.registro;
+  const ult = reg[reg.length-1];
+  if (ult) {
+    document.getElementById('i-ult-data').textContent = ult.data;
+
+    const ep = document.getElementById('i-ult-prot');
+    ep.textContent = fmt(ult.proteina,0,'g'); ep.style.color = cor(ult.proteina, 160, 9999);
+
+    const ec = document.getElementById('i-ult-carbo');
+    ec.textContent = fmt(ult.carbo,0,'g'); ec.style.color = cor(ult.carbo, 150, 250);
+
+    const eg = document.getElementById('i-ult-gord');
+    eg.textContent = fmt(ult.gordura,0,'g'); eg.style.color = cor(ult.gordura, 60, 75);
+
+    const ek = document.getElementById('i-ult-kcal');
+    ek.textContent = fmt(ult.kcal_ing,0,' kcal'); ek.style.color = cor(ult.kcal_ing, 1850, 1950);
+
+    document.getElementById('i-ult-gasto').textContent = fmt(ult.kcal_gasto,0,' kcal');
+
+    const saldo = (ult.kcal_gasto && ult.kcal_ing) ? ult.kcal_gasto - ult.kcal_ing : null;
+    const es = document.getElementById('i-ult-saldo');
+    es.textContent  = saldo ? (saldo>0?'+':'') + saldo + ' kcal' : '—';
+    es.style.color  = saldo ? (saldo>0 ? '#4ade80' : '#f87171') : '#94a3b8';
+
+    const esono = document.getElementById('i-ult-sono');
+    esono.textContent = fmt(ult.sono,1,'h'); esono.style.color = cor(ult.sono, 7, 8.5);
+
+    document.getElementById('i-ult-ativ').textContent = [ult.atividade1,ult.atividade2].filter(Boolean).join(' + ') || '—';
+    document.getElementById('i-ult-obs').textContent  = ult.obs || '—';
+  }
+
+  // Mini gráfico peso
+  destroyC('peso-mini');
+  const pMini = D.pesagens.slice(-20);
+  C['peso-mini'] = new Chart(document.getElementById('c-peso-mini'), {
+    type: 'line',
+    data: {
+      labels: pMini.map(p => p.data.substring(0,5)),
+      datasets: [{
+        label: 'Peso (kg)',
+        data: pMini.map(p => p.peso),
+        borderColor: '#6366f1',
+        backgroundColor: 'rgba(99,102,241,0.1)',
+        fill: true, tension: 0.4, pointRadius: 4,
+      }]
+    },
+    options: { ...CX, plugins: { legend:{display:false} } }
+  });
+}
+
+// ── NUTRIÇÃO ───────────────────────────────────────────────────────────────────
+
+function renderNutricao() {
+  const filt = filtrar(D.registro);
+  const cd = filt.filter(r => r.kcal_ing > 0);
+
+  const m = (c) => { const v = media(cd, c); return v ? v.toFixed(1) : '—'; };
+  document.getElementById('n-mp').textContent = m('proteina') + (m('proteina')!=='—'?'g':'');
+  document.getElementById('n-mc').textContent = m('carbo')    + (m('carbo')!=='—'?'g':'');
+  document.getElementById('n-mg').textContent = m('gordura')  + (m('gordura')!=='—'?'g':'');
+  document.getElementById('n-mk').textContent = m('kcal_ing') + (m('kcal_ing')!=='—'?' kcal':'');
+
+  destroyC('kcal');
+  C['kcal'] = new Chart(document.getElementById('c-kcal'), {
+    type: 'line',
+    data: {
+      labels: filt.map(r => r.data.substring(0,5)),
+      datasets: [
+        { label:'Kcal ingeridas', data:filt.map(r=>r.kcal_ing||null),
+          borderColor:'#f472b6', backgroundColor:'rgba(244,114,182,0.1)', fill:true, tension:0.3 },
+        { label:'Meta mín (1850)', data:filt.map(()=>1850),
+          borderColor:'#4ade80', borderDash:[4,4], borderWidth:1, pointRadius:0 },
+        { label:'Meta máx (1950)', data:filt.map(()=>1950),
+          borderColor:'#fbbf24', borderDash:[4,4], borderWidth:1, pointRadius:0 }
+      ]
+    },
+    options: CX
+  });
+
+  destroyC('macros');
+  C['macros'] = new Chart(document.getElementById('c-macros'), {
+    type: 'bar',
+    data: {
+      labels: filt.map(r => r.data.substring(0,5)),
+      datasets: [
+        { label:'Proteína',   data:filt.map(r=>r.proteina||null), backgroundColor:'#6366f1' },
+        { label:'Carboidrato',data:filt.map(r=>r.carbo||null),    backgroundColor:'#f59e0b' },
+        { label:'Gordura',    data:filt.map(r=>r.gordura||null),  backgroundColor:'#f87171' },
+      ]
+    },
+    options: CX
+  });
+
+  // Tabela
+  const tb = document.getElementById('n-tabela');
+  tb.innerHTML = '';
+  [...filt].reverse().forEach(r => {
+    const saldo = (r.kcal_gasto && r.kcal_ing) ? r.kcal_gasto - r.kcal_ing : null;
+    tb.innerHTML += `<tr class="border-b border-slate-800 hover:bg-slate-800/30">
+      <td class="py-2 text-slate-400">${r.data}</td>
+      <td class="text-right" style="color:${cor(r.proteina,160,9999)}">${fmt(r.proteina,0,'g')}</td>
+      <td class="text-right" style="color:${cor(r.carbo,150,250)}">${fmt(r.carbo,0,'g')}</td>
+      <td class="text-right" style="color:${cor(r.gordura,60,75)}">${fmt(r.gordura,0,'g')}</td>
+      <td class="text-right" style="color:${cor(r.kcal_ing,1850,1950)}">${fmt(r.kcal_ing)}</td>
+      <td class="text-right text-slate-300">${fmt(r.kcal_gasto)}</td>
+      <td class="text-right" style="color:${saldo?(saldo>0?'#4ade80':'#f87171'):'#94a3b8'}">${saldo?(saldo>0?'+':'')+saldo:'—'}</td>
+      <td class="text-right" style="color:${cor(r.sono,7,8.5)}">${fmt(r.sono,1,'h')}</td>
+    </tr>`;
+  });
+}
+
+// ── ESPORTES ──────────────────────────────────────────────────────────────────
+
+function renderEsportes() {
+  const filt = filtrar(D.registro);
+  const cg = filt.filter(r => r.kcal_gasto > 0);
+  const cs = filt.filter(r => r.sono > 0);
+  const ca = filt.filter(r => r.atividade1 || r.atividade2);
+
+  const mg = cg.length ? (media(cg,'kcal_gasto')).toFixed(0) : '—';
+  const ms = cs.length ? (media(cs,'sono')).toFixed(1)       : '—';
+  document.getElementById('e-gasto').textContent   = mg + (mg!=='—'?' kcal':'');
+  document.getElementById('e-sono').textContent    = ms + (ms!=='—'?'h':'');
+  document.getElementById('e-dias').textContent    = ca.length + '/' + filt.length;
+  document.getElementById('e-dias-pct').textContent = filt.length ? Math.round(ca.length/filt.length*100)+'% dos dias' : '';
+
+  destroyC('gasto');
+  C['gasto'] = new Chart(document.getElementById('c-gasto'), {
+    type: 'bar',
+    data: {
+      labels: filt.map(r => r.data.substring(0,5)),
+      datasets: [{ label:'Kcal Gasto', data:filt.map(r=>r.kcal_gasto||null), backgroundColor:'#6366f1' }]
+    },
+    options: CX
+  });
+
+  destroyC('sono');
+  C['sono'] = new Chart(document.getElementById('c-sono'), {
+    type: 'bar',
+    data: {
+      labels: filt.map(r => r.data.substring(0,5)),
+      datasets: [
+        {
+          label: 'Sono (h)',
+          data: filt.map(r => r.sono || null),
+          backgroundColor: filt.map(r => r.sono>=7 && r.sono<=8.5 ? '#4ade80' : '#f87171'),
+        },
+        { label:'Meta (7h)', data:filt.map(()=>7),
+          type:'line', borderColor:'#4ade8066', borderDash:[4,4], borderWidth:1, pointRadius:0 }
+      ]
+    },
+    options: CX
+  });
+
+  // Freq atividades
+  const freq = {};
+  filt.forEach(r => {
+    [r.atividade1, r.atividade2].filter(Boolean).forEach(a => { freq[a] = (freq[a]||0) + 1; });
+  });
+  const total = Object.values(freq).reduce((a,b)=>a+b,0);
+  const div = document.getElementById('e-freq');
+  div.innerHTML = '';
+  if (!total) { div.innerHTML = '<p class="text-slate-500 text-sm">Sem atividades no período.</p>'; return; }
+  Object.entries(freq).sort((a,b)=>b[1]-a[1]).forEach(([nome,cnt]) => {
+    const pct = Math.round(cnt/total*100);
+    div.innerHTML += `<div class="flex items-center gap-3">
+      <span class="text-sm text-slate-300 w-36 shrink-0">${nome}</span>
+      <div class="flex-1 bg-slate-800 rounded-full h-2">
+        <div class="bg-indigo-500 h-2 rounded-full transition-all" style="width:${pct}%"></div>
+      </div>
+      <span class="text-xs text-slate-500 w-10 text-right">${cnt}×</span>
+    </div>`;
+  });
+}
+
+// ── COMPOSIÇÃO ────────────────────────────────────────────────────────────────
+
+function renderComposicao() {
+  const pess = D.pesagens;
+
+  destroyC('peso-full');
+  C['peso-full'] = new Chart(document.getElementById('c-peso-full'), {
+    type: 'line',
+    data: {
+      labels: pess.map(p => p.data.substring(0,5)),
+      datasets: [
+        { label:'Peso (kg)', data:pess.map(p=>p.peso),
+          borderColor:'#6366f1', backgroundColor:'rgba(99,102,241,0.1)',
+          fill:true, tension:0.4, pointRadius:4 },
+        { label:'Meta ('+D.metas.peso_meta+' kg)', data:pess.map(()=>D.metas.peso_meta),
+          borderColor:'#4ade8080', borderDash:[4,4], borderWidth:1, pointRadius:0 }
+      ]
+    },
+    options: CX
+  });
+
+  const tb = document.getElementById('comp-tabela');
+  tb.innerHTML = '';
+  [...pess].reverse().forEach((p,i) => {
+    const ant = pess[pess.length-2-i];
+    const v = ant ? (p.peso - ant.peso).toFixed(1) : null;
+    const vc = v ? (parseFloat(v)<0?'#4ade80':'#f87171') : '#94a3b8';
+    tb.innerHTML += `<tr class="border-b border-slate-800">
+      <td class="py-2 text-slate-500">${pess.length-i}</td>
+      <td class="text-slate-400">${p.data}</td>
+      <td class="text-right font-bold text-white">${p.peso} kg</td>
+      <td class="text-right" style="color:${vc}">${v?(parseFloat(v)>0?'+':'')+v+' kg':'—'}</td>
+      <td class="pl-4 text-slate-500">${p.obs||'—'}</td>
+    </tr>`;
+  });
+}
+
+// ── EXAMES ────────────────────────────────────────────────────────────────────
+
+function renderExames() {
+  const div = document.getElementById('exames-content');
+  if (!D.exames || !D.exames.length) {
+    div.innerHTML = '<p class="text-slate-500 text-sm">Nenhum dado de exame disponível.</p>';
+    return;
+  }
+  const headers = Object.keys(D.exames[0]);
+  let html = `<div class="overflow-x-auto"><table class="w-full text-xs">
+    <thead><tr class="text-slate-500 border-b border-slate-700">
+      ${headers.map(h=>`<th class="text-left py-2 pr-4">${h}</th>`).join('')}
+    </tr></thead><tbody>`;
+  D.exames.forEach(row => {
+    html += `<tr class="border-b border-slate-800">
+      ${headers.map(h=>`<td class="py-2 pr-4 text-slate-300">${row[h]||'—'}</td>`).join('')}
+    </tr>`;
+  });
+  html += '</tbody></table></div>';
+  div.innerHTML = html;
+}
+
+// ── NOTAS ─────────────────────────────────────────────────────────────────────
+
+function renderNotas() {
+  const filt = filtrar(D.registro).filter(r => r.obs && r.obs.trim());
+  const div = document.getElementById('notas-content');
+  div.innerHTML = '';
+  if (!filt.length) {
+    div.innerHTML = '<p class="text-slate-500 text-sm">Nenhuma observação no período.</p>';
+    return;
+  }
+  [...filt].reverse().forEach(r => {
+    const ativ = [r.atividade1, r.atividade2].filter(Boolean).join(' + ');
+    div.innerHTML += `<div class="border-l-2 border-indigo-600 pl-4 py-1">
+      <div class="text-xs text-slate-500 mb-1">${r.data}${ativ ? ' · ' + ativ : ''}</div>
+      <div class="text-sm text-slate-300">${r.obs}</div>
+    </div>`;
+  });
+}
+
+// ── Tab switcher ──────────────────────────────────────────────────────────────
+
+const RENDERS = { inicio:renderInicio, nutricao:renderNutricao, esportes:renderEsportes,
+                  composicao:renderComposicao, exames:renderExames, notas:renderNotas };
+
+function switchTab(nome) {
+  tabAtiva = nome;
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+  document.getElementById('tab-'+nome).classList.remove('hidden');
+  document.querySelectorAll('.tab').forEach(b => {
+    b.classList.toggle('tab-active',   b.dataset.tab===nome);
+    b.classList.toggle('tab-inactive', b.dataset.tab!==nome);
+  });
+  RENDERS[nome]();
+}
+
+document.querySelectorAll('.tab').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.tab)));
+
+// ── Período ───────────────────────────────────────────────────────────────────
+
+document.querySelectorAll('.pbtn').forEach(b => {
+  b.addEventListener('click', () => {
+    periodo = parseInt(b.dataset.d);
+    document.querySelectorAll('.pbtn').forEach(x => {
+      x.classList.toggle('pbtn-on',  x===b);
+      x.classList.toggle('pbtn-off', x!==b);
+    });
+    RENDERS[tabAtiva]();
+  });
+});
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+switchTab('inicio');
+</script>
+</body>
+</html>
