@@ -2,14 +2,16 @@
 """
 RFS — Garmin Sync
 Puxa sono e calorias do Garmin Connect e atualiza registro.csv.
-Roda automaticamente via GitHub Actions todo dia às 23:30 (horário de Brasília).
+Usa sessão OAuth salva para evitar rate limit do Garmin.
 """
 
 import os
 import csv
+import json
 from datetime import date
 from pathlib import Path
 
+import garth
 from garminconnect import Garmin
 
 
@@ -17,6 +19,7 @@ from garminconnect import Garmin
 
 GARMIN_EMAIL    = os.environ["GARMIN_EMAIL"]
 GARMIN_PASSWORD = os.environ["GARMIN_PASSWORD"]
+TOKEN_PATH      = Path(".garmin_tokens")
 
 REGISTRO = Path("registro.csv")
 CAMPOS   = ["data", "proteina", "carbo", "gordura", "kcal_ing",
@@ -25,21 +28,43 @@ CAMPOS   = ["data", "proteina", "carbo", "gordura", "kcal_ing",
 
 # ── Garmin ────────────────────────────────────────────────────────────────────
 
-def buscar_garmin(data_iso: str) -> dict:
-    print("🔌 Conectando ao Garmin Connect...")
-    garmin = Garmin(GARMIN_EMAIL, GARMIN_PASSWORD)
-    garmin.login()
-    print("✅ Login OK")
+def conectar_garmin() -> Garmin:
+    """
+    Conecta ao Garmin reutilizando tokens salvos quando possível,
+    fazendo login completo só quando necessário.
+    """
+    client = Garmin()
 
-    # Calorias totais (BMR + ativas)
-    stats      = garmin.get_stats(data_iso)
+    if TOKEN_PATH.exists():
+        print("🔑 Usando tokens salvos...")
+        try:
+            client.garth.load(str(TOKEN_PATH))
+            client.display_name  # testa se o token é válido
+            print("✅ Token válido")
+            return client
+        except Exception:
+            print("⚠️  Token expirado, fazendo login novamente...")
+
+    print("🔌 Fazendo login com email/senha...")
+    client = Garmin(GARMIN_EMAIL, GARMIN_PASSWORD)
+    client.login()
+    client.garth.dump(str(TOKEN_PATH))
+    print("✅ Login OK — tokens salvos")
+    return client
+
+
+def buscar_garmin(data_iso: str) -> dict:
+    client = conectar_garmin()
+
+    # Calorias totais do dia (BMR + ativas)
+    stats      = client.get_stats(data_iso)
     kcal_total = int(stats.get("totalKilocalories", 0) or 0)
     print(f"🔥 Calorias: {kcal_total} kcal")
 
     # Sono (noite anterior — convenção RFS)
     sono_horas = 0.0
     try:
-        sleep_data = garmin.get_sleep_data(data_iso)
+        sleep_data = client.get_sleep_data(data_iso)
         dto        = sleep_data.get("dailySleepDTO") or sleep_data
         sono_seg   = dto.get("sleepTimeSeconds", 0) or 0
         sono_horas = round(sono_seg / 3600, 2)
@@ -78,8 +103,7 @@ def ordenar(rows: list[dict]) -> list[dict]:
 
 def atualizar_csv(dados_garmin: dict, data_br: str):
     rows = ler_csv()
-
-    row = next((r for r in rows if r.get("data", "").strip() == data_br), None)
+    row  = next((r for r in rows if r.get("data", "").strip() == data_br), None)
 
     if row is None:
         row = {c: "" for c in CAMPOS}
@@ -87,7 +111,7 @@ def atualizar_csv(dados_garmin: dict, data_br: str):
         rows.append(row)
         print(f"➕ Nova linha: {data_br}")
     else:
-        print(f"✏️  Atualizando linha: {data_br}")
+        print(f"✏️  Atualizando: {data_br}")
 
     row["kcal_gasto"] = dados_garmin["kcal_gasto"]
     row["sono"]       = dados_garmin["sono"]
