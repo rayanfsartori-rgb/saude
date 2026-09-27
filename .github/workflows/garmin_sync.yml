@@ -15,6 +15,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Restaurar tokens Garmin
+        uses: actions/cache@v4
+        with:
+          path: .garmin_tokens
+          key: garmin-tokens
+
       - name: Configurar Python 3.11
         uses: actions/setup-python@v5
         with:
@@ -33,6 +39,13 @@ jobs:
         run: |
           mkdir -p docs
           python gerar_dashboard.py
+
+      - name: Salvar tokens Garmin
+        uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: .garmin_tokens
+          key: garmin-tokens
 
       - name: Commit e push
         run: |
