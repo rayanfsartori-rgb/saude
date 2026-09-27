@@ -1,1 +1,43 @@
+name: RFS — Garmin Sync + Dashboard
 
+on:
+  schedule:
+    - cron: '30 2 * * *'
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configurar Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Instalar dependências
+        run: pip install -r requirements.txt
+
+      - name: Sincronizar Garmin → CSV
+        env:
+          GARMIN_EMAIL:    ${{ secrets.GARMIN_EMAIL }}
+          GARMIN_PASSWORD: ${{ secrets.GARMIN_PASSWORD }}
+        run: python garmin_sync.py
+
+      - name: Gerar dashboard
+        run: |
+          mkdir -p docs
+          python gerar_dashboard.py
+
+      - name: Commit e push
+        run: |
+          git config user.name  "RFS Bot"
+          git config user.email "rfs-bot@users.noreply.github.com"
+          git add registro.csv docs/index.html
+          git diff --staged --quiet || git commit -m "sync: garmin $(date -u +%Y-%m-%d)"
+          git push
